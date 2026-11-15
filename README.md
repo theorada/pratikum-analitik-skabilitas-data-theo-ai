@@ -4,7 +4,7 @@
 **Kelompok:** — · **Run ID:** `smoke-a` dan `kelas-1m`  
 **Mata kuliah:** Analitik dan Skalabilitas Data · [Repositori Git](https://github.com/theorada/pratikum-analitik-skabilitas-data-theo-ai)
 
-Pada satu juta transaksi sintetis, 998.005 baris lolos pembersihan dan tersimpan di Iceberg. Broadcast join menghasilkan agregat yang sama dengan sort-merge join dalam 0,7796 detik dibandingkan 1,7815 detik. Salting memperbaiki distribusi partisi, dengan selisih waktu agregasi hanya 3,4 ms.
+Pada satu juta transaksi sintetis, 998.005 baris lolos pembersihan dan tersimpan di Iceberg. Broadcast join menghasilkan agregat yang sama dengan sort-merge join dengan median 0,5551 detik dibandingkan 1,0541 detik. Salting memperbaiki distribusi partisi, dengan median waktu agregasi meningkat dari 0,4438 menjadi 0,5807 detik.
 
 ## 1. Lingkungan pengujian
 
@@ -99,7 +99,7 @@ Repartisi berdasarkan kota mengumpulkan sekitar 80% data pada satu partisi. Salt
 | 6 | 1996 | 1396 | 99800 | 68203 |
 | 7 | 0 | 2594 | 0 | 130616 |
 
-Indeks skew (maksimum dibagi rata-rata delapan partisi) turun dari 6,40 menjadi 2,25 pada kedua skala. Di Stage 18 kelas-1m sebelum salting, task 572 membaca 4,6 MiB dan memerlukan 0,4 detik, sedangkan lima task mencatat nol record input. Salting mengisi semua partisi, tetapi penambahan kunci dan agregasi kedua juga membutuhkan waktu. Pada 20 ribu event, C lebih lambat daripada B. Pada satu juta event, selisih waktunya terlalu kecil untuk menyimpulkan percepatan yang konsisten.
+Indeks skew (maksimum dibagi rata-rata delapan partisi) turun dari 6,40 menjadi 2,25 pada kedua skala. Di Stage 18 kelas-1m sebelum salting, task 572 membaca 4,6 MiB dan memerlukan 0,4 detik, sedangkan lima task mencatat nol record input. Salting mengisi semua partisi, tetapi penambahan kunci dan agregasi kedua juga membutuhkan waktu. Pada kedua ukuran, median waktu C lebih tinggi daripada B (bagian 8).
 
 ## 6. Broadcast join
 
@@ -134,35 +134,39 @@ Hasilnya 666 baris pada smoke-a dan 33.268 pada kelas-1m. Kedua physical plan me
 
 ## 8. Benchmark komparatif
 
-Waktu dalam detik mengukur action collect pada query. Dataset bersih dipersist dan dimaterialisasi sebelum benchmark. Persiapan cache serta penulisan Iceberg berada di luar waktu ini. Tiap ukuran memiliki satu pengamatan. Tanda — berarti pengulangan atau median tiga percobaan belum tersedia.
+Waktu dalam detik mengukur action collect pada query. Dataset bersih dipersist dan dimaterialisasi sebelum benchmark. Persiapan cache serta penulisan Iceberg berada di luar waktu ini. Setiap ukuran diuji tiga kali pada data yang sama. Median adalah nilai tengah ketiga waktu setelah diurutkan. [CSV ketiga percobaan](hasil/pengulangan/)
 
 ### smoke-a
 
 | Eksperimen | Percobaan 1 | Percobaan 2 | Percobaan 3 | Median | Temuan |
 |---|---:|---:|---:|---:|---|
-| A_groupby_baseline | 1.3017 | — | — | — | Acuan agregasi kota |
-| B_skew_before | 0.3332 | — | — | — | Agregasi dengan skew |
-| C_skew_after_salting | 0.5700 | — | — | — | Agregasi dua tahap |
-| D_sort_merge_join | 1.8108 | — | — | — | Join dengan pengurutan |
-| E_broadcast_join | 0.4376 | — | — | — | Broadcast dimensi produk |
+| A_groupby_baseline | 1.3017 | 1.0811 | 0.8103 | 1.0811 | Acuan agregasi kota |
+| B_skew_before | 0.3332 | 0.2322 | 0.2282 | 0.2322 | Agregasi dengan skew |
+| C_skew_after_salting | 0.5700 | 0.5244 | 0.5487 | 0.5487 | Agregasi dua tahap |
+| D_sort_merge_join | 1.8108 | 0.6326 | 0.4937 | 0.6326 | Join dengan pengurutan |
+| E_broadcast_join | 0.4376 | 0.3432 | 0.3244 | 0.3432 | Broadcast dimensi produk |
 
 ### kelas-1m
 
 | Eksperimen | Percobaan 1 | Percobaan 2 | Percobaan 3 | Median | Temuan |
 |---|---:|---:|---:|---:|---|
-| A_groupby_baseline | 1.8867 | — | — | — | Acuan agregasi kota |
-| B_skew_before | 0.8393 | — | — | — | Agregasi dengan skew |
-| C_skew_after_salting | 0.8359 | — | — | — | Agregasi dua tahap |
-| D_sort_merge_join | 1.7815 | — | — | — | Join dengan pengurutan |
-| E_broadcast_join | 0.7796 | — | — | — | Broadcast dimensi produk |
+| A_groupby_baseline | 1.8867 | 0.8970 | 0.9719 | 0.9719 | Acuan agregasi kota |
+| B_skew_before | 0.8393 | 0.3490 | 0.4438 | 0.4438 | Agregasi dengan skew |
+| C_skew_after_salting | 0.8359 | 0.7217 | 0.5807 | 0.7217 | Agregasi dua tahap |
+| D_sort_merge_join | 1.7815 | 1.0311 | 1.0541 | 1.0541 | Join dengan pengurutan |
+| E_broadcast_join | 0.7796 | 0.5042 | 0.5551 | 0.5551 | Broadcast dimensi produk |
 
 ## 9. Kesimpulan dan catatan keamanan
 
-Speedup dihitung sebagai waktu acuan dibagi waktu optimasi. Broadcast memberi speedup 4,14× pada smoke-a dan 2,29× pada kelas-1m. Salting memberi 0,58× dan 1,00×. Beban partisi membaik pada kedua ukuran, tetapi manfaat waktu bergantung pada biaya agregasi tambahan. Satu pengamatan per ukuran belum mengukur variasi antarrun.
+Speedup dihitung sebagai waktu acuan dibagi waktu optimasi. Berdasarkan median tiga percobaan, broadcast memberi speedup 1,84× pada smoke-a dan 1,90× pada kelas-1m. Salting meratakan beban partisi, tetapi median waktunya meningkat pada kedua ukuran. Pada satu juta transaksi, selisih median mencapai 0,1369 detik.
 
 Spark local[4] berbagi CPU dan memori satu Mac. Pada klaster terdistribusi, lalu lintas jaringan, jumlah executor, dan ukuran dimensi dapat mengubah hasil. Satu broker dengan replikasi satu juga belum menguji ketahanan terhadap kegagalan broker. Batasi akses port ke lingkungan lab, gunakan kredensial terpisah untuk sistem nyata, dan jangan unggah rahasia produksi ke Git.
 
 ## Lampiran
+
+![Spark Jobs smoke-a, percobaan kedua. Job ID 0 dan 1 selesai.](bukti/spark-jobs.png)
+
+![MinIO warehouse memuat file Parquet untuk partisi sale_date 2026-09-05.](bukti/minio-warehouse.png)
 
 
 - **smoke-a** · [Quality JSON](hasil/smoke-a/quality.json) · [Benchmark CSV](hasil/smoke-a/benchmarks.csv) · [Distribusi partisi](hasil/smoke-a/partition_sizes.csv) · [Seluruh execution plan](hasil/smoke-a/)
